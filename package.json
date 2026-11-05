@@ -1,6 +1,6 @@
 {
   "name": "mmm-chiafarm",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "MagicMirror module showing Chia farm status from chia-exporter metrics",
   "main": "MMM-ChiaFarm.js",
   "license": "MIT"

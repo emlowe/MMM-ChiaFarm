@@ -21,6 +21,8 @@ No npm dependencies (uses Node's built-in `fetch`).
     expectedDrives: 10,     // warn when fewer plot drives are mounted (off by default)
     partialWarnMinutes: 20, // warn after this long with no partials; 0 to turn off
     priceCoin: "chia",      // CoinGecko coin ID for the price stat; null to turn off
+    foxyPool: "chia",       // Foxy-Pool pool ID for pool-side partial data (off by default)
+    validWarnPercent: 100,  // valid percentage turns yellow below this
     updateInterval: 60000,
     lookupWarn: 2,          // seconds; lookup time turns yellow above this
     lookupBad: 5            // seconds; red above this
@@ -37,6 +39,17 @@ A problem with node_exporter only removes the drive details: it never shows as O
 The price comes from CoinGecko's public API, with no key, and refreshes every ten minutes.
 If it can't be fetched, the last price stays for up to an hour and then the stat disappears.
 A price problem never changes the farm status.
+
+## Foxy-Pool
+
+With `foxyPool` set, the module looks up your account on Foxy-Pool's public API, using the launcher ID
+that chia-exporter reports. No key is needed. It refreshes every five minutes and adds two things:
+
+- The valid share percentage over the last 24 hours, shown under the graph.
+- The no-partials warning uses the time the pool last accepted a partial, rather than the local count.
+
+If the pool can't be reached, the warning goes back to the local count, and the percentage disappears
+after an hour. A pool problem never changes the farm status in any other way.
 
 ## Partials rate and graph
 

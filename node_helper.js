@@ -16,6 +16,9 @@ const MIN_RATE_COVERAGE = 10 * 60 * 1000;
 const PRICE_URL = "https://api.coingecko.com/api/v3/simple/price";
 const PRICE_INTERVAL = 10 * 60 * 1000;
 const PRICE_MAX_AGE = 60 * 60 * 1000;  // an older price is hidden rather than shown as current
+const POOL_API = "https://api.foxypool.io/api/v4";
+const POOL_INTERVAL = 5 * 60 * 1000;
+const POOL_MAX_AGE = 60 * 60 * 1000;   // an older valid percentage is hidden
 
 // Parse Prometheus text format into [{name, labels, value}]
 function parseMetrics(text) {
@@ -57,6 +60,7 @@ function summarize(metrics) {
 		plots: sum("chia_farmer_plot_count"),
 		plotBytes: sum("chia_farmer_plot_filesize"),
 		partials: sum("chia_farmer_submitted_partials"),
+		launcherId: (all("chia_farmer_submitted_partials")[0] || { labels: {} }).labels.launcher_id || null,
 		lookup
 	};
 }
@@ -120,6 +124,18 @@ function parsePrice(text, coin) {
 	return { usd: entry.usd, change24h: Number.isFinite(entry.usd_24h_change) ? entry.usd_24h_change : null };
 }
 
+// Foxy-Pool account details and 24 hours of history, reduced to what the panel shows.
+function parsePool(account, history) {
+	const total = (key) => history.reduce((n, row) => n + (row[key] || 0), 0);
+	const valid = total("shares");
+	const all = valid + total("staleShares") + total("invalidShares");
+	const accepted = Date.parse(account.lastAcceptedPartialAt);
+	return {
+		validPct: all > 0 ? (100 * valid) / all : null,
+		lastAccepted: Number.isFinite(accepted) ? accepted : null
+	};
+}
+
 async function getText(url) {
 	const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
 	if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -164,6 +180,28 @@ module.exports = NodeHelper.create({
 		}
 	},
 
+	// Same rules as the price: its own slower schedule, and a failure never affects the
+	// farm status. After a failed attempt the last accepted time can't be trusted, so
+	// the no-partials warning goes back to the local count.
+	async refreshPool (poolId, launcherId, now) {
+		if (this.poolAttempt && now - this.poolAttempt < POOL_INTERVAL) return;
+		this.poolAttempt = now;
+		try {
+			const base = `${POOL_API}/${encodeURIComponent(poolId)}/account/${encodeURIComponent(launcherId.replace(/^0x/, ""))}`;
+			const [account, history] = await Promise.all([getText(base), getText(`${base}/historical?duration=1d`)]);
+			this.pool = { ...parsePool(JSON.parse(account), JSON.parse(history)), time: now };
+		} catch (err) {
+			Log.error(`MMM-ChiaFarm: pool: ${err.message}`);
+			if (this.pool) this.pool.lastAccepted = null;
+		}
+	},
+
+	currentPool (now) {
+		if (!this.pool || now - this.pool.time > POOL_MAX_AGE) return null;
+		const { validPct, lastAccepted } = this.pool;
+		return { validPct, quietSec: lastAccepted == null ? null : Math.max(0, now - lastAccepted) / 1000 };
+	},
+
 	currentPrice (now) {
 		return this.price && now - this.price.time <= PRICE_MAX_AGE ? this.price : null;
 	},
@@ -183,17 +221,20 @@ module.exports = NodeHelper.create({
 			host = summarizeHost(parseMetrics(node.value), config.drivePattern);
 		}
 
-		const now = Date.now();
-		const payload = { id: config.id, host, price: config.priceCoin ? this.currentPrice(now) : null };
+		const payload = { id: config.id, host, price: config.priceCoin ? this.currentPrice(Date.now()) : null };
 		if (chia.status === "rejected") {
 			Log.error(`MMM-ChiaFarm: ${chia.reason.message}`);
 			payload.error = chia.reason.message;
 		} else {
-			payload.summary = summarize(parseMetrics(chia.value));
+			const { launcherId, ...summary } = summarize(parseMetrics(chia.value));
+			payload.summary = summary;
 			const before = this.samples;
-			this.samples = addSample(before, now, payload.summary.partials);
+			this.samples = addSample(before, Date.now(), summary.partials);
 			if (this.samples !== before) this.saveSamples();
+			if (config.foxyPool && launcherId) await this.refreshPool(config.foxyPool, launcherId, Date.now());
 		}
+		const now = Date.now();
+		payload.pool = config.foxyPool ? this.currentPool(now) : null;
 		payload.partials = partialStats(this.samples, now);
 		this.sendSocketNotification("CHIAFARM_DATA", payload);
 	},
@@ -212,3 +253,4 @@ module.exports.summarizeHost = summarizeHost;
 module.exports.partialStats = partialStats;
 module.exports.addSample = addSample;
 module.exports.parsePrice = parsePrice;
+module.exports.parsePool = parsePool;

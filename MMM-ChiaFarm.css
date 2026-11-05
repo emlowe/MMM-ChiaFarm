@@ -62,6 +62,7 @@
   color: #888;
   margin-top: 2px;
 }
+.cf-valid-low { color: var(--cf-warn); }
 
 .cf-row {
   display: flex;
