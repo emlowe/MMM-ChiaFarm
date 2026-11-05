@@ -10,7 +10,7 @@
 .chiafarm.cf-bad  { --cf-state: var(--cf-bad); }
 
 .cf-title {
-  font-size: 15px;
+  font-size: 16px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #777;
@@ -21,7 +21,7 @@
   display: flex;
   align-items: baseline;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 .cf-dot {
   width: 12px;
@@ -31,21 +31,23 @@
   box-shadow: 0 0 10px var(--cf-state);
   align-self: center;
 }
-.cf-state  { font-size: 26px; color: var(--cf-state); }
-.cf-height { font-size: 22px; font-weight: 300; color: #ddd; font-variant-numeric: tabular-nums; margin-left: auto; }
+.cf-state  { font-size: 30px; color: var(--cf-state); }
+.cf-height { font-size: 26px; font-weight: 300; color: #ddd; font-variant-numeric: tabular-nums; margin-left: auto; }
 
 .cf-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px 18px;
+  grid-template-columns: auto auto auto;
+  justify-content: space-between;
+  gap: 8px 14px;
 }
-.cf-stat-value { font-size: 24px; font-weight: 300; color: #eee; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.cf-stat-label { font-size: 13px; color: #777; }
+.cf-stat-value { font-size: 28px; font-weight: 300; color: #eee; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.cf-stat-label { font-size: 17px; color: #999; white-space: nowrap; }
+.cf-stat.cf-short .cf-stat-label { color: var(--cf-warn); }
 .cf-stat.cf-good .cf-stat-value     { color: var(--cf-ok); }
 .cf-stat.cf-warntext .cf-stat-value { color: var(--cf-warn); }
 .cf-stat.cf-badtext .cf-stat-value  { color: var(--cf-bad); }
 
-.cf-foot { margin-top: 10px; font-size: 13px; color: #666; }
+.cf-foot { margin-top: 8px; font-size: 16px; color: #888; }
 
 /* Last-known numbers stay visible but dimmed while the exporter is unreachable */
 .chiafarm.cf-stale .cf-grid,

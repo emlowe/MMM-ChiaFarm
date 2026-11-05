@@ -63,20 +63,65 @@ function summarize(metrics) {
 	};
 }
 
+// Machine health from a stock node_exporter. drivePattern selects the plot drives by mountpoint.
+function summarizeHost(metrics, drivePattern) {
+	const rows = (name) => metrics.filter((x) => x.name === name);
+	const one = (name) => (rows(name)[0] || {}).value;
+	const bytes = (name, mount) => (rows(name).find((x) => x.labels.mountpoint === mount) || {}).value;
+
+	const re = new RegExp(drivePattern);
+	const broken = new Set(rows("node_filesystem_device_error").filter((x) => x.value === 1).map((x) => x.labels.mountpoint));
+	const drives = new Map();
+	for (const r of rows("node_filesystem_readonly")) {
+		if (re.test(r.labels.mountpoint) && !broken.has(r.labels.mountpoint)) drives.set(r.labels.mountpoint, r.value === 1);
+	}
+
+	const now = one("node_time_seconds");
+	const boot = one("node_boot_time_seconds");
+	const pkg = rows("node_thermal_zone_temp").find((x) => x.labels.type === "x86_pkg_temp");
+	const core = rows("node_hwmon_temp_celsius").filter((x) => (x.labels.chip || "").includes("coretemp")).map((x) => x.value);
+	const size = bytes("node_filesystem_size_bytes", "/");
+	const avail = bytes("node_filesystem_avail_bytes", "/");
+
+	return {
+		uptimeSec: now && boot ? now - boot : null,
+		cpuTemp: pkg ? pkg.value : (core.length ? Math.max(...core) : null),
+		osFreePct: size && avail != null ? (100 * avail) / size : null,
+		driveCount: drives.size,
+		readOnly: [...drives].filter(([, ro]) => ro).map(([mount]) => mount).sort()
+	};
+}
+
+async function getText(url) {
+	const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	return res.text();
+}
+
 module.exports = NodeHelper.create({
 	start () {
 		Log.log(`Starting node helper for: ${this.name}`);
 	},
 
 	async fetchMetrics (config) {
-		try {
-			const res = await fetch(config.url, { signal: AbortSignal.timeout(10000) });
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const summary = summarize(parseMetrics(await res.text()));
-			this.sendSocketNotification("CHIAFARM_DATA", { id: config.id, summary });
-		} catch (err) {
-			Log.error(`MMM-ChiaFarm: ${err.message}`);
-			this.sendSocketNotification("CHIAFARM_DATA", { id: config.id, error: err.message });
+		// The two sources fail independently: node_exporter being down only removes the host details.
+		const [chia, node] = await Promise.allSettled([
+			getText(config.url),
+			config.nodeExporterUrl ? getText(config.nodeExporterUrl) : Promise.resolve(null)
+		]);
+
+		let host = null;
+		if (node.status === "rejected") {
+			Log.error(`MMM-ChiaFarm: node_exporter: ${node.reason.message}`);
+		} else if (node.value) {
+			host = summarizeHost(parseMetrics(node.value), config.drivePattern);
+		}
+
+		if (chia.status === "rejected") {
+			Log.error(`MMM-ChiaFarm: ${chia.reason.message}`);
+			this.sendSocketNotification("CHIAFARM_DATA", { id: config.id, host, error: chia.reason.message });
+		} else {
+			this.sendSocketNotification("CHIAFARM_DATA", { id: config.id, host, summary: summarize(parseMetrics(chia.value)) });
 		}
 	},
 
@@ -90,3 +135,4 @@ module.exports = NodeHelper.create({
 // Exported for local testing
 module.exports.parseMetrics = parseMetrics;
 module.exports.summarize = summarize;
+module.exports.summarizeHost = summarizeHost;
