@@ -1,9 +1,10 @@
 # MMM-ChiaFarm
 
 MagicMirror² module that shows Chia farm status from a
-[chia-exporter](https://github.com/Chia-Network/chia-exporter) `/metrics` endpoint:
-sync state, height, plots and size, partials (with rate), pool points, proofs found,
-full-node peers, harvester lookup time, version and exporter uptime.
+[chia-exporter](https://github.com/Chia-Network/chia-exporter) `/metrics` endpoint: sync state,
+height, recent partials rate with a three-hour graph, plots and size, full-node peers and
+harvester lookup time. With a stock [node_exporter](https://github.com/prometheus/node_exporter)
+on the farm it also shows the plot drive count and warns about drive problems.
 
 No npm dependencies (uses Node's built-in `fetch`).
 
@@ -15,16 +16,24 @@ No npm dependencies (uses Node's built-in `fetch`).
   position: "top_left",
   config: {
     url: "http://chiafarm.local:9914/metrics",
+    nodeExporterUrl: "http://chiafarm.local:9100/metrics", // null to turn off drive details
+    drivePattern: "^/chia\\d+$", // mountpoints counted as plot drives
+    expectedDrives: 10,     // warn when fewer plot drives are mounted (off by default)
+    partialWarnMinutes: 20, // warn after this long with no partials; 0 to turn off
     updateInterval: 60000,
-    showBalance: false,   // show wallet XCH balance in the footer
-    lookupWarn: 2,        // seconds; lookup time turns yellow above this
-    lookupBad: 5          // seconds; red above this
+    lookupWarn: 2,          // seconds; lookup time turns yellow above this
+    lookupBad: 5            // seconds; red above this
   }
 }
 ```
 
-Status line: **Synced** (green), **Syncing** / **No harvester** (yellow), **Offline** (red, last-known numbers dimmed).
+Status line: **Synced** (green), **Syncing** / **No harvester** / **Drive missing** / **read-only** /
+**No partials** (yellow), **Offline** (red, last-known numbers dimmed).
+A problem with node_exporter only removes the drive details: it never shows as Offline or as a drive warning.
 
-Counters like partials and proofs reset when the exporter restarts. Exporter uptime comes
-from `process_start_time_seconds` when present, otherwise it is estimated from signage
-points seen since start.
+## Partials rate and graph
+
+The exporter's counter only totals partials since it started, so the helper records it each update
+and saves the readings in `history.json`. The rate covers the last hour and appears after ten minutes
+of readings. The graph fills in over three hours. Time with no readings shows as a flat grey line, and
+doesn't count toward the no-partials warning. Exporter restarts don't appear as a stall.
