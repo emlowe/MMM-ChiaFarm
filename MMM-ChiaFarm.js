@@ -8,6 +8,7 @@ Module.register("MMM-ChiaFarm", {
 		drivePattern: "^/chia\\d+$", // mountpoints counted as plot drives
 		expectedDrives: null,    // set to warn when fewer plot drives are mounted
 		partialWarnMinutes: 20,  // warn after this long with no partials; 0 to turn off
+		notFarmingMinutes: 10,   // warn after this long with no plots passing the filter; 0 to turn off
 		priceCoin: "chia",       // CoinGecko coin ID for the price stat; null to turn off
 		foxyPool: null,          // Foxy-Pool pool ID, such as "chia", for pool-side partial data
 		validWarnPercent: 100,   // valid percentage turns yellow below this
@@ -23,6 +24,7 @@ Module.register("MMM-ChiaFarm", {
 		this.partials = null;
 		this.price = null;
 		this.pool = null;
+		this.notFarmingSec = null;
 		this.error = null;
 		this.fetch();
 		setInterval(() => this.fetch(), this.config.updateInterval);
@@ -49,6 +51,7 @@ Module.register("MMM-ChiaFarm", {
 		this.partials = payload.partials || null;
 		this.price = payload.price || null;
 		this.pool = payload.pool || null;
+		this.notFarmingSec = payload.notFarmingSec == null ? null : payload.notFarmingSec;
 		if (payload.error) {
 			this.error = payload.error;
 		} else {
@@ -106,6 +109,11 @@ Module.register("MMM-ChiaFarm", {
 		return null;
 	},
 
+	notFarming () {
+		const mins = this.config.notFarmingMinutes;
+		return Boolean(mins && this.notFarmingSec != null && this.notFarmingSec >= mins * 60);
+	},
+
 	// Time since the pool last accepted a partial, or the local count without pool data.
 	quietSeconds () {
 		if (this.pool && this.pool.quietSec != null) return this.pool.quietSec;
@@ -154,10 +162,16 @@ Module.register("MMM-ChiaFarm", {
 		wrap.appendChild(barsEl);
 		const axis = this.el("div", "cf-axis");
 		axis.appendChild(this.el("span", null, "3h ago"));
-		if (this.pool && this.pool.validPct != null) {
-			const low = this.pool.validPct < this.config.validWarnPercent;
-			axis.appendChild(this.el("span", low ? "cf-valid-low" : null, this.validText(this.pool.validPct)));
+		const poolInfo = this.el("span");
+		if (this.pool && this.pool.effortPct != null) {
+			poolInfo.appendChild(this.el("span", null, `Effort ${this.pool.effortPct.toFixed(1)}%`));
 		}
+		if (this.pool && this.pool.validPct != null) {
+			if (poolInfo.childElementCount) poolInfo.appendChild(this.el("span", null, " · "));
+			const low = this.pool.validPct < this.config.validWarnPercent;
+			poolInfo.appendChild(this.el("span", low ? "cf-valid-low" : null, this.validText(this.pool.validPct)));
+		}
+		if (poolInfo.childElementCount) axis.appendChild(poolInfo);
 		axis.appendChild(this.el("span", null, "now"));
 		wrap.appendChild(axis);
 		return wrap;
@@ -178,6 +192,7 @@ Module.register("MMM-ChiaFarm", {
 		if (this.error) { state = "bad"; stateText = "Offline"; }
 		else if (!s.synced) { state = "warn"; stateText = "Syncing"; }
 		else if (!s.harvesters) { state = "warn"; stateText = "No harvester"; }
+		else if (this.notFarming()) { state = "warn"; stateText = `Not farming ${this.fmtQuiet(this.notFarmingSec)}`; }
 		else if (this.driveProblem()) { state = "warn"; stateText = this.driveProblem(); }
 		else if (quiet) { state = "warn"; stateText = `No partials ${this.fmtQuiet(this.quietSeconds())}`; }
 		w.classList.add("cf-" + state);
