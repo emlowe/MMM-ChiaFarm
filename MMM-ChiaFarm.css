@@ -77,6 +77,8 @@
 .cf-stat.cf-warntext .cf-stat-value { color: var(--cf-warn); }
 .cf-stat.cf-badtext .cf-stat-value  { color: var(--cf-bad); }
 .cf-stat.cf-short .cf-stat-label    { color: var(--cf-warn); }
+.cf-stat.cf-up .cf-stat-label       { color: var(--cf-ok); }
+.cf-stat.cf-down .cf-stat-label     { color: var(--cf-bad); }
 
 /* Last-known numbers stay visible but dimmed while the exporter is unreachable */
 .chiafarm.cf-stale .cf-partials,

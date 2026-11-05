@@ -2,8 +2,8 @@
 
 MagicMirror² module that shows Chia farm status from a
 [chia-exporter](https://github.com/Chia-Network/chia-exporter) `/metrics` endpoint: sync state,
-height, recent partials rate with a three-hour graph, plots and size, full-node peers and
-harvester lookup time. With a stock [node_exporter](https://github.com/prometheus/node_exporter)
+height, recent partials rate with a three-hour graph, plots and size, full-node peers,
+harvester lookup time and the coin price with its 24-hour change. With a stock [node_exporter](https://github.com/prometheus/node_exporter)
 on the farm it also shows the plot drive count and warns about drive problems.
 
 No npm dependencies (uses Node's built-in `fetch`).
@@ -20,6 +20,7 @@ No npm dependencies (uses Node's built-in `fetch`).
     drivePattern: "^/chia\\d+$", // mountpoints counted as plot drives
     expectedDrives: 10,     // warn when fewer plot drives are mounted (off by default)
     partialWarnMinutes: 20, // warn after this long with no partials; 0 to turn off
+    priceCoin: "chia",      // CoinGecko coin ID for the price stat; null to turn off
     updateInterval: 60000,
     lookupWarn: 2,          // seconds; lookup time turns yellow above this
     lookupBad: 5            // seconds; red above this
@@ -30,6 +31,12 @@ No npm dependencies (uses Node's built-in `fetch`).
 Status line: **Synced** (green), **Syncing** / **No harvester** / **Drive missing** / **read-only** /
 **No partials** (yellow), **Offline** (red, last-known numbers dimmed).
 A problem with node_exporter only removes the drive details: it never shows as Offline or as a drive warning.
+
+## Price
+
+The price comes from CoinGecko's public API, with no key, and refreshes every ten minutes.
+If it can't be fetched, the last price stays for up to an hour and then the stat disappears.
+A price problem never changes the farm status.
 
 ## Partials rate and graph
 

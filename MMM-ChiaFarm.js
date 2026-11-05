@@ -8,6 +8,7 @@ Module.register("MMM-ChiaFarm", {
 		drivePattern: "^/chia\\d+$", // mountpoints counted as plot drives
 		expectedDrives: null,    // set to warn when fewer plot drives are mounted
 		partialWarnMinutes: 20,  // warn after this long with no partials; 0 to turn off
+		priceCoin: "chia",       // CoinGecko coin ID for the price stat; null to turn off
 		updateInterval: 60 * 1000,
 		title: "Chia Farm",
 		lookupWarn: 2,           // seconds: yellow above this
@@ -18,6 +19,7 @@ Module.register("MMM-ChiaFarm", {
 		this.summary = null;
 		this.host = null;
 		this.partials = null;
+		this.price = null;
 		this.error = null;
 		this.fetch();
 		setInterval(() => this.fetch(), this.config.updateInterval);
@@ -32,7 +34,8 @@ Module.register("MMM-ChiaFarm", {
 			id: this.identifier,
 			url: this.config.url,
 			nodeExporterUrl: this.config.nodeExporterUrl,
-			drivePattern: this.config.drivePattern
+			drivePattern: this.config.drivePattern,
+			priceCoin: this.config.priceCoin
 		});
 	},
 
@@ -40,6 +43,7 @@ Module.register("MMM-ChiaFarm", {
 		if (notification !== "CHIAFARM_DATA" || payload.id !== this.identifier) return;
 		this.host = payload.host || null;
 		this.partials = payload.partials || null;
+		this.price = payload.price || null;
 		if (payload.error) {
 			this.error = payload.error;
 		} else {
@@ -111,6 +115,15 @@ Module.register("MMM-ChiaFarm", {
 			: `${size} · ${h.driveCount} drives`;
 	},
 
+	priceStat () {
+		const p = this.price;
+		const value = `$${p.usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+		if (p.change24h == null) return this.stat(value, "24h");
+		const change = Math.round(p.change24h * 10) / 10;
+		const label = `${change > 0 ? "+" : ""}${change.toFixed(1)}% 24h`;
+		return this.stat(value, label, change > 0 ? "cf-up" : (change < 0 ? "cf-down" : null));
+	},
+
 	buildGraph () {
 		const wrap = this.el("div", "cf-graph");
 		const barsEl = this.el("div", "cf-bars");
@@ -175,6 +188,7 @@ Module.register("MMM-ChiaFarm", {
 		row.appendChild(this.stat(this.fmtInt(s.plots), this.sizeLabel(s), this.drivesShort() ? "cf-short" : null));
 		row.appendChild(this.stat(this.fmtInt(s.peers), "peers"));
 		row.appendChild(this.stat(s.lookup != null ? `${s.lookup.toFixed(2)}s` : "–", "lookup", lookCls));
+		if (this.price) row.appendChild(this.priceStat());
 		w.appendChild(row);
 
 		return w;

@@ -13,6 +13,9 @@ const BUCKET = 10 * 60 * 1000;
 const BUCKETS = 18;                    // three hours of ten-minute bars
 const RATE_WINDOW = 60 * 60 * 1000;
 const MIN_RATE_COVERAGE = 10 * 60 * 1000;
+const PRICE_URL = "https://api.coingecko.com/api/v3/simple/price";
+const PRICE_INTERVAL = 10 * 60 * 1000;
+const PRICE_MAX_AGE = 60 * 60 * 1000;  // an older price is hidden rather than shown as current
 
 // Parse Prometheus text format into [{name, labels, value}]
 function parseMetrics(text) {
@@ -111,6 +114,12 @@ function addSample(samples, t, v) {
 	return samples.filter((s) => s.t >= cutoff).concat({ t, v });
 }
 
+function parsePrice(text, coin) {
+	const entry = JSON.parse(text)[coin];
+	if (!entry || !Number.isFinite(entry.usd)) throw new Error(`no price for ${coin}`);
+	return { usd: entry.usd, change24h: Number.isFinite(entry.usd_24h_change) ? entry.usd_24h_change : null };
+}
+
 async function getText(url) {
 	const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
 	if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -142,11 +151,29 @@ module.exports = NodeHelper.create({
 		}
 	},
 
+	// Refreshes on its own slower schedule, however many pages are open. A failure only
+	// ever hides the price: it never affects the farm status.
+	async refreshPrice (coin, now) {
+		if (this.priceAttempt && now - this.priceAttempt < PRICE_INTERVAL) return;
+		this.priceAttempt = now;
+		try {
+			const url = `${PRICE_URL}?ids=${encodeURIComponent(coin)}&vs_currencies=usd&include_24hr_change=true`;
+			this.price = { ...parsePrice(await getText(url), coin), time: now };
+		} catch (err) {
+			Log.error(`MMM-ChiaFarm: price: ${err.message}`);
+		}
+	},
+
+	currentPrice (now) {
+		return this.price && now - this.price.time <= PRICE_MAX_AGE ? this.price : null;
+	},
+
 	async fetchMetrics (config) {
 		// The two sources fail independently: node_exporter being down only removes the drive details.
 		const [chia, node] = await Promise.allSettled([
 			getText(config.url),
-			config.nodeExporterUrl ? getText(config.nodeExporterUrl) : Promise.resolve(null)
+			config.nodeExporterUrl ? getText(config.nodeExporterUrl) : Promise.resolve(null),
+			config.priceCoin ? this.refreshPrice(config.priceCoin, Date.now()) : Promise.resolve()
 		]);
 
 		let host = null;
@@ -157,7 +184,7 @@ module.exports = NodeHelper.create({
 		}
 
 		const now = Date.now();
-		const payload = { id: config.id, host };
+		const payload = { id: config.id, host, price: config.priceCoin ? this.currentPrice(now) : null };
 		if (chia.status === "rejected") {
 			Log.error(`MMM-ChiaFarm: ${chia.reason.message}`);
 			payload.error = chia.reason.message;
@@ -184,3 +211,4 @@ module.exports.summarize = summarize;
 module.exports.summarizeHost = summarizeHost;
 module.exports.partialStats = partialStats;
 module.exports.addSample = addSample;
+module.exports.parsePrice = parsePrice;
