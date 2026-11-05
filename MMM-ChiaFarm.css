@@ -3,52 +3,82 @@
   --cf-warn: #facc15;
   --cf-bad: #f87171;
   --cf-state: var(--cf-ok);
-  min-width: 260px;
+  --cf-rate: var(--cf-ok);
+  min-width: 300px;
   text-align: left;
+  line-height: 1.2;
 }
 .chiafarm.cf-warn { --cf-state: var(--cf-warn); }
 .chiafarm.cf-bad  { --cf-state: var(--cf-bad); }
+.chiafarm.cf-quiet { --cf-rate: var(--cf-warn); }
 
 .cf-title {
-  font-size: 16px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #777;
+  color: #888;
   margin-bottom: 4px;
 }
 
 .cf-hero {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
 }
 .cf-dot {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   background: var(--cf-state);
-  box-shadow: 0 0 10px var(--cf-state);
-  align-self: center;
 }
-.cf-state  { font-size: 30px; color: var(--cf-state); }
-.cf-height { font-size: 26px; font-weight: 300; color: #ddd; font-variant-numeric: tabular-nums; margin-left: auto; }
+.cf-state  { font-size: 24px; color: var(--cf-state); }
+.cf-height { font-size: 20px; font-weight: 300; color: #ccc; font-variant-numeric: tabular-nums; margin-left: auto; }
 
-.cf-grid {
-  display: grid;
-  grid-template-columns: auto auto auto;
-  justify-content: space-between;
-  gap: 8px 14px;
+.cf-partials {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
 }
-.cf-stat-value { font-size: 28px; font-weight: 300; color: #eee; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.cf-stat-label { font-size: 17px; color: #999; white-space: nowrap; }
-.cf-stat.cf-short .cf-stat-label { color: var(--cf-warn); }
+.cf-rate-value { font-size: 42px; line-height: 1; color: var(--cf-rate); font-variant-numeric: tabular-nums; }
+
+.cf-graph { flex: 1; min-width: 0; }
+.cf-bars {
+  height: 58px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.cf-bar {
+  flex: 1;
+  min-height: 2px;
+  background: var(--cf-rate);
+}
+.cf-bar-empty { background: #333; height: 2px; }
+.cf-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.cf-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+}
+.cf-stat-value { font-size: 24px; font-weight: 300; color: #eee; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.cf-stat-label { font-size: 14px; color: #999; margin-top: 2px; white-space: nowrap; }
 .cf-stat.cf-good .cf-stat-value     { color: var(--cf-ok); }
 .cf-stat.cf-warntext .cf-stat-value { color: var(--cf-warn); }
 .cf-stat.cf-badtext .cf-stat-value  { color: var(--cf-bad); }
-
-.cf-foot { margin-top: 8px; font-size: 16px; color: #888; }
+.cf-stat.cf-short .cf-stat-label    { color: var(--cf-warn); }
 
 /* Last-known numbers stay visible but dimmed while the exporter is unreachable */
-.chiafarm.cf-stale .cf-grid,
+.chiafarm.cf-stale .cf-partials,
+.chiafarm.cf-stale .cf-row,
 .chiafarm.cf-stale .cf-height { opacity: 0.4; }
