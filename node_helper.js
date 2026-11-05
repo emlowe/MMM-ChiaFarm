@@ -60,6 +60,8 @@ function summarize(metrics) {
 		plots: sum("chia_farmer_plot_count"),
 		plotBytes: sum("chia_farmer_plot_filesize"),
 		partials: sum("chia_farmer_submitted_partials"),
+		eligiblePlots: sum("chia_farmer_total_eligible_plots"),
+		netspaceMiB: sum("chia_full_node_netspace_mib"),
 		launcherId: (all("chia_farmer_submitted_partials")[0] || { labels: {} }).labels.launcher_id || null,
 		lookup
 	};
@@ -110,12 +112,12 @@ function partialStats(samples, now) {
 	};
 }
 
-function addSample(samples, t, v) {
+function addSample(samples, t, v, e = null) {
 	if (v == null) return samples;
 	const last = samples[samples.length - 1];
 	if (last && t - last.t < MIN_SAMPLE_GAP) return samples;
 	const cutoff = t - BUCKET * (BUCKETS + 1);
-	return samples.filter((s) => s.t >= cutoff).concat({ t, v });
+	return samples.filter((s) => s.t >= cutoff).concat({ t, v, e });
 }
 
 function parsePrice(text, coin) {
@@ -124,15 +126,43 @@ function parsePrice(text, coin) {
 	return { usd: entry.usd, change24h: Number.isFinite(entry.usd_24h_change) ? entry.usd_24h_change : null };
 }
 
+// Blocks since the last win times this farm's share of the network, as the pool's own
+// page calculates it. Unknown until there's a win since the account last joined the pool.
+function currentEffort(pool, height, netspaceMiB) {
+	if (!pool.lastWinHeight || !pool.ecGiB || !height || !netspaceMiB) return null;
+	return (100 * Math.max(0, height - pool.lastWinHeight) * pool.ecGiB * 1024) / netspaceMiB;
+}
+
+// Time the eligible plot count has been standing still. No plots passing the filter means
+// the farm isn't receiving signage points or isn't checking its plots. Null when unknown.
+function notFarmingSeconds(samples) {
+	let quiet = 0;
+	let known = false;
+	for (let i = samples.length - 1; i > 0; i--) {
+		const a = samples[i - 1], b = samples[i];
+		if (b.t - a.t > MAX_SAMPLE_GAP) continue;
+		if (a.e == null || b.e == null) break;
+		known = true;
+		const delta = b.e >= a.e ? b.e - a.e : b.e;
+		if (delta > 0) break;
+		quiet += b.t - a.t;
+	}
+	return known ? quiet / 1000 : null;
+}
+
 // Foxy-Pool account details and 24 hours of history, reduced to what the panel shows.
-function parsePool(account, history) {
+function parsePool(account, history, wins) {
 	const total = (key) => history.reduce((n, row) => n + (row[key] || 0), 0);
 	const valid = total("shares");
 	const all = valid + total("staleShares") + total("invalidShares");
 	const accepted = Date.parse(account.lastAcceptedPartialAt);
+	const lastWin = wins.reduce((latest, win) => (!latest || win.height > latest.height ? win : latest), null);
+	const beforeRejoin = lastWin && account.rejoinedAt && Date.parse(lastWin.createdAt) < Date.parse(account.rejoinedAt);
 	return {
 		validPct: all > 0 ? (100 * valid) / all : null,
-		lastAccepted: Number.isFinite(accepted) ? accepted : null
+		lastAccepted: Number.isFinite(accepted) ? accepted : null,
+		lastWinHeight: lastWin && !beforeRejoin ? lastWin.height : null,
+		ecGiB: Number.isFinite(account.ec) ? account.ec : null
 	};
 }
 
@@ -188,18 +218,26 @@ module.exports = NodeHelper.create({
 		this.poolAttempt = now;
 		try {
 			const base = `${POOL_API}/${encodeURIComponent(poolId)}/account/${encodeURIComponent(launcherId.replace(/^0x/, ""))}`;
-			const [account, history] = await Promise.all([getText(base), getText(`${base}/historical?duration=1d`)]);
-			this.pool = { ...parsePool(JSON.parse(account), JSON.parse(history)), time: now };
+			const [account, history, wins] = await Promise.all([
+				getText(base),
+				getText(`${base}/historical?duration=1d`),
+				getText(`${base}/won-blocks`)
+			]);
+			this.pool = { ...parsePool(JSON.parse(account), JSON.parse(history), JSON.parse(wins)), time: now };
 		} catch (err) {
 			Log.error(`MMM-ChiaFarm: pool: ${err.message}`);
 			if (this.pool) this.pool.lastAccepted = null;
 		}
 	},
 
-	currentPool (now) {
+	currentPool (now, summary) {
 		if (!this.pool || now - this.pool.time > POOL_MAX_AGE) return null;
 		const { validPct, lastAccepted } = this.pool;
-		return { validPct, quietSec: lastAccepted == null ? null : Math.max(0, now - lastAccepted) / 1000 };
+		return {
+			validPct,
+			quietSec: lastAccepted == null ? null : Math.max(0, now - lastAccepted) / 1000,
+			effortPct: summary ? currentEffort(this.pool, summary.height, summary.netspaceMiB) : null
+		};
 	},
 
 	currentPrice (now) {
@@ -229,13 +267,14 @@ module.exports = NodeHelper.create({
 			const { launcherId, ...summary } = summarize(parseMetrics(chia.value));
 			payload.summary = summary;
 			const before = this.samples;
-			this.samples = addSample(before, Date.now(), summary.partials);
+			this.samples = addSample(before, Date.now(), summary.partials, summary.eligiblePlots);
 			if (this.samples !== before) this.saveSamples();
 			if (config.foxyPool && launcherId) await this.refreshPool(config.foxyPool, launcherId, Date.now());
 		}
 		const now = Date.now();
-		payload.pool = config.foxyPool ? this.currentPool(now) : null;
+		payload.pool = config.foxyPool ? this.currentPool(now, payload.summary) : null;
 		payload.partials = partialStats(this.samples, now);
+		payload.notFarmingSec = notFarmingSeconds(this.samples);
 		this.sendSocketNotification("CHIAFARM_DATA", payload);
 	},
 
@@ -254,3 +293,5 @@ module.exports.partialStats = partialStats;
 module.exports.addSample = addSample;
 module.exports.parsePrice = parsePrice;
 module.exports.parsePool = parsePool;
+module.exports.currentEffort = currentEffort;
+module.exports.notFarmingSeconds = notFarmingSeconds;
