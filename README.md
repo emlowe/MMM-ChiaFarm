@@ -1,12 +1,21 @@
 # MMM-ChiaFarm
 
-MagicMirror² module that shows Chia farm status from a
-[chia-exporter](https://github.com/Chia-Network/chia-exporter) `/metrics` endpoint: sync state,
-height, recent partials rate with a three-hour graph, plots and size, full-node peers,
-harvester lookup time and the coin price with its 24-hour change. With a stock [node_exporter](https://github.com/prometheus/node_exporter)
-on the farm it also shows the plot drive count and warns about drive problems.
+MagicMirror² module for a Chia farm, read from a
+[chia-exporter](https://github.com/Chia-Network/chia-exporter) `/metrics` endpoint. Shows sync
+state, height, partials per hour with a three-hour graph, plots and size, peers, lookup time and the
+XCH price. Optional: drive checks from [node_exporter](https://github.com/prometheus/node_exporter)
+and effort and valid shares from Foxy-Pool.
 
-No npm dependencies (uses Node's built-in `fetch`).
+![Chia farm panel](screenshot.png)
+
+## Install
+
+```sh
+cd ~/MagicMirror/modules
+git clone https://github.com/emlowe/MMM-ChiaFarm
+```
+
+No npm dependencies.
 
 ## Config
 
@@ -21,8 +30,8 @@ No npm dependencies (uses Node's built-in `fetch`).
     expectedDrives: 10,     // warn when fewer plot drives are mounted (off by default)
     partialWarnMinutes: 20, // warn after this long with no partials; 0 to turn off
     notFarmingMinutes: 10,  // warn after this long with no plots passing the filter; 0 to turn off
-    priceCoin: "chia",      // CoinGecko coin ID for the price stat; null to turn off
-    foxyPool: "chia",       // Foxy-Pool pool ID for pool-side partial data (off by default)
+    priceCoin: "chia",      // CoinGecko coin ID for the price; null to turn off
+    foxyPool: "chia",       // Foxy-Pool pool ID (off by default)
     validWarnPercent: 100,  // valid percentage turns yellow below this
     updateInterval: 60000,
     lookupWarn: 2,          // seconds; lookup time turns yellow above this
@@ -31,38 +40,16 @@ No npm dependencies (uses Node's built-in `fetch`).
 }
 ```
 
-Status line: **Synced** (green), **Syncing** / **No harvester** / **Not farming** / **Drive missing** /
-**read-only** / **No partials** (yellow), **Offline** (red, last-known numbers dimmed).
-A problem with node_exporter only removes the drive details: it never shows as Offline or as a drive warning.
+## Status
 
-## Price
+**Synced** (green); **Syncing**, **No harvester**, **Not farming**, **Drive missing**, **read-only**
+or **No partials** (yellow); **Offline** (red, last-known numbers dimmed).
 
-The price comes from CoinGecko's public API, with no key, and refreshes every ten minutes.
-If it can't be fetched, the last price stays for up to an hour and then the stat disappears.
-A price problem never changes the farm status.
+## Notes
 
-## Foxy-Pool
-
-With `foxyPool` set, the module looks up your account on Foxy-Pool's public API, using the launcher ID
-that chia-exporter reports. No key is needed. It refreshes every five minutes and adds two things:
-
-- Current effort and the valid share percentage over the last 24 hours, shown under the graph. Effort
-  is blocks since your last win multiplied by your share of netspace, the same way the pool's page
-  calculates it, and it needs at least one win since the account last joined the pool.
-- The no-partials warning uses the time the pool last accepted a partial, rather than the local count.
-
-If the pool can't be reached, the warning goes back to the local count, and the percentage disappears
-after an hour. A pool problem never changes the farm status in any other way.
-
-## Not farming
-
-The exporter counts plots passing the filter, which happens about 1.3 times per signage point for 335
-plots. If that count stops rising for `notFarmingMinutes`, the farm isn't receiving signage points or
-isn't checking its plots. It doesn't need a pool, and it can't confirm that proofs are valid.
-
-## Partials rate and graph
-
-The exporter's counter only totals partials since it started, so the helper records it each update
-and saves the readings in `history.json`. The rate covers the last hour and appears after ten minutes
-of readings. The graph fills in over three hours. Time with no readings shows as a flat grey line, and
-doesn't count toward the no-partials warning. Exporter restarts don't appear as a stall.
+- Partials readings are saved to `history.json`. The rate appears after ten minutes and the graph
+  fills in over three hours.
+- **Not farming** means no plots have passed the filter for `notFarmingMinutes`.
+- With `foxyPool` set, effort and 24-hour valid shares appear under the graph, and the no-partials
+  warning uses the pool's last accepted partial. Effort needs one win since joining the pool.
+- Price, pool and node_exporter problems never change the farm status.
