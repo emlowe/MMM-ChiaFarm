@@ -20,6 +20,7 @@ No npm dependencies (uses Node's built-in `fetch`).
     drivePattern: "^/chia\\d+$", // mountpoints counted as plot drives
     expectedDrives: 10,     // warn when fewer plot drives are mounted (off by default)
     partialWarnMinutes: 20, // warn after this long with no partials; 0 to turn off
+    notFarmingMinutes: 10,  // warn after this long with no plots passing the filter; 0 to turn off
     priceCoin: "chia",      // CoinGecko coin ID for the price stat; null to turn off
     foxyPool: "chia",       // Foxy-Pool pool ID for pool-side partial data (off by default)
     validWarnPercent: 100,  // valid percentage turns yellow below this
@@ -30,8 +31,8 @@ No npm dependencies (uses Node's built-in `fetch`).
 }
 ```
 
-Status line: **Synced** (green), **Syncing** / **No harvester** / **Drive missing** / **read-only** /
-**No partials** (yellow), **Offline** (red, last-known numbers dimmed).
+Status line: **Synced** (green), **Syncing** / **No harvester** / **Not farming** / **Drive missing** /
+**read-only** / **No partials** (yellow), **Offline** (red, last-known numbers dimmed).
 A problem with node_exporter only removes the drive details: it never shows as Offline or as a drive warning.
 
 ## Price
@@ -45,11 +46,19 @@ A price problem never changes the farm status.
 With `foxyPool` set, the module looks up your account on Foxy-Pool's public API, using the launcher ID
 that chia-exporter reports. No key is needed. It refreshes every five minutes and adds two things:
 
-- The valid share percentage over the last 24 hours, shown under the graph.
+- Current effort and the valid share percentage over the last 24 hours, shown under the graph. Effort
+  is blocks since your last win multiplied by your share of netspace, the same way the pool's page
+  calculates it, and it needs at least one win since the account last joined the pool.
 - The no-partials warning uses the time the pool last accepted a partial, rather than the local count.
 
 If the pool can't be reached, the warning goes back to the local count, and the percentage disappears
 after an hour. A pool problem never changes the farm status in any other way.
+
+## Not farming
+
+The exporter counts plots passing the filter, which happens about 1.3 times per signage point for 335
+plots. If that count stops rising for `notFarmingMinutes`, the farm isn't receiving signage points or
+isn't checking its plots. It doesn't need a pool, and it can't confirm that proofs are valid.
 
 ## Partials rate and graph
 
